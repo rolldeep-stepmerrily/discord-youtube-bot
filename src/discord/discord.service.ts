@@ -1,6 +1,6 @@
 import { createAudioPlayer, joinVoiceChannel, VoiceConnection } from '@discordjs/voice';
 import { Injectable, InternalServerErrorException, OnModuleInit } from '@nestjs/common';
-import { Client, EmbedBuilder, GatewayIntentBits, Message, VoiceChannel } from 'discord.js';
+import { Client, EmbedBuilder, GatewayIntentBits, Message, MessageReaction, User, VoiceChannel } from 'discord.js';
 
 import { YoutubeService } from 'src/youtube/youtube.service';
 
@@ -75,26 +75,51 @@ export class DiscordService implements OnModuleInit {
 
     try {
       const results = await this.youtubeService.findVideo(q);
-      const embed = new EmbedBuilder().setTitle('검색 결과').setColor(0xff0000).setDescription('영상을 선택해주세요!');
 
-      const fields = results.map((result, index) => {
-        return {
-          name: `${index + 1}. ${result.snippet?.title ?? ''}`,
-          value: result.snippet?.description ?? '',
-        };
-      });
-
-      if (!fields || !fields.length) {
+      if (!results || !results.length) {
         message.reply('검색 결과가 없습니다.');
 
         return;
       }
 
+      const embed = new EmbedBuilder().setTitle('검색 결과').setColor(0xff0000).setDescription('영상을 선택해주세요!');
+
+      const fields = results.map((result, index) => {
+        return {
+          name: `${index + 1}. ${result.snippet?.title ?? ''}`,
+          value: result.snippet?.description?.substring(0, 100) + '...' ?? '',
+        };
+      });
+
       embed.addFields(fields);
 
       const sentMessage = await message.channel.send({ embeds: [embed] });
+
+      const emojis = ['1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣'];
+
       for (let i = 0; i < results.length; i++) {
-        await sentMessage.react(`${i + 1}️⃣`);
+        await sentMessage.react(emojis[i]);
+      }
+
+      const filter = (reaction: MessageReaction, user: User) =>
+        emojis.includes(reaction.emoji.name ?? '') && user.id === message.author.id;
+
+      const collected = await sentMessage.awaitReactions({ filter, max: 1, time: 30000, errors: ['time'] });
+
+      const reaction = collected.first();
+
+      if (reaction) {
+        const index = emojis.indexOf(reaction.emoji.name ?? '');
+
+        const selected = results[index];
+
+        if (!selected || !selected.id?.videoId) {
+          message.reply('선택한 영상의 정보가 없습니다.');
+        }
+
+        if (selected.id) {
+          await this.audioPlayer(selected.id.videoId, message);
+        }
       }
     } catch (e) {
       console.error(e);
