@@ -1,6 +1,13 @@
-import { createAudioPlayer, joinVoiceChannel, VoiceConnection } from '@discordjs/voice';
+import {
+  AudioPlayerStatus,
+  createAudioPlayer,
+  createAudioResource,
+  joinVoiceChannel,
+  VoiceConnection,
+} from '@discordjs/voice';
 import { Injectable, InternalServerErrorException, OnModuleInit } from '@nestjs/common';
 import { Client, EmbedBuilder, GatewayIntentBits, Message, MessageReaction, User, VoiceChannel } from 'discord.js';
+import ytdl from 'ytdl-core';
 
 import { YoutubeService } from 'src/youtube/youtube.service';
 
@@ -104,23 +111,29 @@ export class DiscordService implements OnModuleInit {
       const filter = (reaction: MessageReaction, user: User) =>
         emojis.includes(reaction.emoji.name ?? '') && user.id === message.author.id;
 
-      const collected = await sentMessage.awaitReactions({ filter, max: 1, time: 30000, errors: ['time'] });
+      try {
+        const collected = await sentMessage.awaitReactions({ filter, max: 1, time: 30000, errors: ['time'] });
 
-      const reaction = collected.first();
+        const reaction = collected.first();
 
-      if (reaction) {
-        const index = emojis.indexOf(reaction.emoji.name ?? '');
+        if (reaction) {
+          const index = emojis.indexOf(reaction.emoji.name ?? '');
 
-        const selected = results[index];
+          const selected = results[index];
 
-        if (!selected || !selected.id?.videoId) {
-          message.reply('선택한 영상의 정보가 없습니다.');
+          if (!selected || !selected.id?.videoId) {
+            message.reply('선택한 영상의 정보가 없습니다.');
+          }
+
+          if (selected.id) {
+            await this.audioPlayer(selected.id.videoId, message);
+          }
         }
-
-        if (selected.id) {
-          await this.audioPlayer(selected.id.videoId, message);
-        }
+      } catch (e) {
+        message.reply('30초 안에 선택해주세요!');
       }
+
+      await sentMessage.reactions.removeAll();
     } catch (e) {
       console.error(e);
 
@@ -139,6 +152,40 @@ export class DiscordService implements OnModuleInit {
       console.error(e);
 
       throw new InternalServerErrorException();
+    }
+  }
+
+  async play(videoId: string, message: Message) {
+    if (!this.voiceConnection) {
+      message.reply('음성 채널에 연결되어 있지 않습니다.');
+
+      return;
+    }
+
+    try {
+      const stream = ytdl(`https://www.youtube.com/watch?v=${videoId}`, { filter: 'audioonly' });
+      const resource = createAudioResource(stream);
+
+      this.audioPlayer.play(resource);
+      this.voiceConnection.subscribe(this.audioPlayer);
+
+      this.audioPlayer.on(AudioPlayerStatus.Playing, () => {
+        message.reply('🎵 play!');
+      });
+
+      this.audioPlayer.on(AudioPlayerStatus.Idle, () => {
+        message.reply('🎵 stop!');
+      });
+
+      this.audioPlayer.on('error', (e: any) => {
+        console.error(e);
+
+        message.reply('에러가 발생했습니다.');
+      });
+    } catch (e) {
+      console.error(e);
+
+      message.reply('에러가 발생했습니다.');
     }
   }
 }
