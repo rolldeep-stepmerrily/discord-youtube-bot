@@ -1,4 +1,5 @@
 import {
+  AudioPlayer,
   AudioPlayerStatus,
   createAudioPlayer,
   createAudioResource,
@@ -15,7 +16,7 @@ import { YoutubeService } from 'src/youtube/youtube.service';
 export class DiscordService implements OnModuleInit {
   private client: Client;
   private voiceConnection: VoiceConnection | null = null;
-  private audioPlayer: any = null;
+  private audioPlayer: AudioPlayer;
 
   constructor(private readonly youtubeService: YoutubeService) {
     this.client = new Client({
@@ -125,8 +126,8 @@ export class DiscordService implements OnModuleInit {
             message.reply('선택한 영상의 정보가 없습니다.');
           }
 
-          if (selected.id) {
-            await this.audioPlayer.play(selected.id.videoId, message);
+          if (selected.id && selected.id.videoId) {
+            await this.playMusic(selected.id.videoId, message);
           }
         }
       } catch (e) {
@@ -157,7 +158,7 @@ export class DiscordService implements OnModuleInit {
     }
   }
 
-  async play(videoId: string, message: Message) {
+  async playMusic(videoId: string, message: Message) {
     if (!this.voiceConnection) {
       message.reply('음성 채널에 연결되어 있지 않습니다.');
 
