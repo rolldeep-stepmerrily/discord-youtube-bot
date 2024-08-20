@@ -1,11 +1,14 @@
-import { Injectable, OnModuleInit } from '@nestjs/common';
-import { Client, EmbedBuilder, GatewayIntentBits, Message } from 'discord.js';
+import { createAudioPlayer, joinVoiceChannel, VoiceConnection } from '@discordjs/voice';
+import { Injectable, InternalServerErrorException, OnModuleInit } from '@nestjs/common';
+import { Client, EmbedBuilder, GatewayIntentBits, Message, VoiceChannel } from 'discord.js';
 
 import { YoutubeService } from 'src/youtube/youtube.service';
 
 @Injectable()
 export class DiscordService implements OnModuleInit {
   private client: Client;
+  private voiceConnection: VoiceConnection | null = null;
+  private audioPlayer: any = null;
 
   constructor(private readonly youtubeService: YoutubeService) {
     this.client = new Client({
@@ -14,13 +17,16 @@ export class DiscordService implements OnModuleInit {
         GatewayIntentBits.GuildMessages,
         GatewayIntentBits.MessageContent,
         GatewayIntentBits.GuildVoiceStates,
+        GatewayIntentBits.GuildMessageReactions,
       ],
     });
+
+    this.audioPlayer = createAudioPlayer();
   }
 
   async onModuleInit() {
     this.client.on('ready', () => {
-      // console.log(this.client.user.tag);
+      console.log(this.client.user?.tag);
     });
 
     this.client.on('messageCreate', (message: Message) => {
@@ -57,6 +63,16 @@ export class DiscordService implements OnModuleInit {
       return;
     }
 
+    const voiceChannel = message.member?.voice.channel;
+
+    if (!voiceChannel) {
+      message.reply('음성 채널에 아무도 없습니다!');
+
+      return;
+    }
+
+    await this.connectToVoiceChannel(voiceChannel as VoiceChannel);
+
     try {
       const results = await this.youtubeService.findVideo(q);
       const embed = new EmbedBuilder().setTitle('검색 결과').setColor(0xff0000).setDescription('영상을 선택해주세요!');
@@ -84,6 +100,20 @@ export class DiscordService implements OnModuleInit {
       console.error(e);
 
       message.reply('에러가 발생했습니다.');
+    }
+  }
+
+  async connectToVoiceChannel(voiceChannel: VoiceChannel) {
+    try {
+      this.voiceConnection = joinVoiceChannel({
+        channelId: voiceChannel.id,
+        guildId: voiceChannel.guild.id,
+        adapterCreator: voiceChannel.guild.voiceAdapterCreator,
+      });
+    } catch (e) {
+      console.error(e);
+
+      throw new InternalServerErrorException();
     }
   }
 }
