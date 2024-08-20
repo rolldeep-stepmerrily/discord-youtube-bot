@@ -130,6 +130,8 @@ export class DiscordService implements OnModuleInit {
           }
         }
       } catch (e) {
+        console.error(e);
+
         message.reply('30초 안에 선택해주세요!');
       }
 
