@@ -126,7 +126,7 @@ export class DiscordService implements OnModuleInit {
           }
 
           if (selected.id) {
-            await this.audioPlayer(selected.id.videoId, message);
+            await this.audioPlayer.play(selected.id.videoId, message);
           }
         }
       } catch (e) {
