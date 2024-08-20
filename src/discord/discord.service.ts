@@ -4,11 +4,13 @@ import {
   createAudioPlayer,
   createAudioResource,
   joinVoiceChannel,
+  StreamType,
   VoiceConnection,
 } from '@discordjs/voice';
 import { Injectable, InternalServerErrorException, OnModuleInit } from '@nestjs/common';
 import { Client, EmbedBuilder, GatewayIntentBits, Message, MessageReaction, User, VoiceChannel } from 'discord.js';
 import ytdl from 'ytdl-core';
+import ffmpeg from 'ffmpeg-static';
 
 import { YoutubeService } from 'src/youtube/youtube.service';
 
@@ -30,6 +32,8 @@ export class DiscordService implements OnModuleInit {
     });
 
     this.audioPlayer = createAudioPlayer();
+
+    process.env.FFMPEG_PATH = ffmpeg;
   }
 
   async onModuleInit() {
@@ -166,8 +170,11 @@ export class DiscordService implements OnModuleInit {
     }
 
     try {
-      const stream = ytdl(`https://www.youtube.com/watch?v=${videoId}`, { filter: 'audioonly' });
-      const resource = createAudioResource(stream);
+      const stream = ytdl(`https://www.youtube.com/watch?v=${videoId}`, {
+        filter: 'audioonly',
+        highWaterMark: 1 << 25,
+      });
+      const resource = createAudioResource(stream, { inputType: StreamType.Arbitrary });
 
       this.audioPlayer.play(resource);
       this.voiceConnection.subscribe(this.audioPlayer);
