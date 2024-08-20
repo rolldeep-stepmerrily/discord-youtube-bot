@@ -1,16 +1,15 @@
 import {
-  AudioPlayer,
   AudioPlayerStatus,
   createAudioPlayer,
   createAudioResource,
+  demuxProbe,
   joinVoiceChannel,
-  StreamType,
+  NoSubscriberBehavior,
   VoiceConnection,
 } from '@discordjs/voice';
 import { Injectable, InternalServerErrorException, OnModuleInit } from '@nestjs/common';
 import { Client, EmbedBuilder, GatewayIntentBits, Message, MessageReaction, User, VoiceChannel } from 'discord.js';
-import ytdl from 'ytdl-core';
-import ffmpeg from 'ffmpeg-static';
+import playdl from 'play-dl';
 
 import { YoutubeService } from 'src/youtube/youtube.service';
 
@@ -18,7 +17,7 @@ import { YoutubeService } from 'src/youtube/youtube.service';
 export class DiscordService implements OnModuleInit {
   private client: Client;
   private voiceConnection: VoiceConnection | null = null;
-  private audioPlayer: AudioPlayer;
+  private audioPlayer: any = null;
 
   constructor(private readonly youtubeService: YoutubeService) {
     this.client = new Client({
@@ -31,9 +30,15 @@ export class DiscordService implements OnModuleInit {
       ],
     });
 
-    this.audioPlayer = createAudioPlayer();
+    this.audioPlayer = createAudioPlayer({
+      behaviors: {
+        noSubscriber: NoSubscriberBehavior.Play,
+      },
+    });
 
-    process.env.FFMPEG_PATH = ffmpeg;
+    this.audioPlayer.on('error', (e: any) => {
+      console.error(e);
+    });
   }
 
   async onModuleInit() {
@@ -170,13 +175,19 @@ export class DiscordService implements OnModuleInit {
     }
 
     try {
-      const stream = ytdl(`https://www.youtube.com/watch?v=${videoId}`, {
-        filter: 'audioonly',
-        highWaterMark: 1 << 25,
+      const stream = await playdl.stream(videoId, {
+        discordPlayerCompatibility: true,
       });
-      const resource = createAudioResource(stream, { inputType: StreamType.Arbitrary });
 
-      this.audioPlayer.play(resource);
+      const { stream: audioStream, type } = await demuxProbe(stream.stream);
+
+      const resource = createAudioResource(audioStream, {
+        inputType: type,
+        inlineVolume: true,
+      });
+
+      await this.audioPlayer.play(resource);
+
       this.voiceConnection.subscribe(this.audioPlayer);
 
       this.audioPlayer.on(AudioPlayerStatus.Playing, () => {
