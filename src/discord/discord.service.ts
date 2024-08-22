@@ -1,23 +1,25 @@
 import {
+  AudioPlayer,
   AudioPlayerStatus,
+  AudioResource,
   createAudioPlayer,
   createAudioResource,
-  demuxProbe,
   joinVoiceChannel,
-  NoSubscriberBehavior,
+  StreamType,
   VoiceConnection,
 } from '@discordjs/voice';
 import { Injectable, InternalServerErrorException, OnModuleInit } from '@nestjs/common';
 import { Client, EmbedBuilder, GatewayIntentBits, Message, MessageReaction, User, VoiceChannel } from 'discord.js';
-import playdl from 'play-dl';
 
 import { YoutubeService } from 'src/youtube/youtube.service';
+import { Readable } from 'stream';
+import ytdl from '@distube/ytdl-core';
 
 @Injectable()
 export class DiscordService implements OnModuleInit {
   private client: Client;
   private voiceConnection: VoiceConnection | null = null;
-  private audioPlayer: any = null;
+  private audioPlayer: AudioPlayer;
 
   constructor(private readonly youtubeService: YoutubeService) {
     this.client = new Client({
@@ -30,11 +32,7 @@ export class DiscordService implements OnModuleInit {
       ],
     });
 
-    this.audioPlayer = createAudioPlayer({
-      behaviors: {
-        noSubscriber: NoSubscriberBehavior.Play,
-      },
-    });
+    this.audioPlayer = createAudioPlayer();
 
     this.audioPlayer.on('error', (e: any) => {
       console.error(e);
@@ -136,7 +134,7 @@ export class DiscordService implements OnModuleInit {
           }
 
           if (selected.id && selected.id.videoId) {
-            await this.playMusic(selected.id.videoId, message);
+            await this.playAudio(selected.id.videoId, message);
           }
         }
       } catch (e) {
@@ -167,46 +165,51 @@ export class DiscordService implements OnModuleInit {
     }
   }
 
-  async playMusic(videoId: string, message: Message) {
+  async playAudio(videoId: string, message: Message) {
     if (!this.voiceConnection) {
-      message.reply('음성 채널에 연결되어 있지 않습니다.');
-
-      return;
+      message.reply('음성 채널에 연결되어 있지 않습니다!');
     }
 
-    try {
-      const stream = await playdl.stream(videoId, {
-        discordPlayerCompatibility: true,
-      });
+    const audioStream = await this.createAudioStream(videoId);
 
-      const { stream: audioStream, type } = await demuxProbe(stream.stream);
+    if (!audioStream) {
+      throw new Error('Invalid audio stream');
+    }
+    const audioResource = await this.createAudioResource(audioStream);
 
-      const resource = createAudioResource(audioStream, {
-        inputType: type,
-        inlineVolume: true,
-      });
+    audioResource.volume?.setVolume(1.0);
 
-      await this.audioPlayer.play(resource);
+    this.play(audioResource, message);
+  }
 
-      this.voiceConnection.subscribe(this.audioPlayer);
+  async createAudioStream(videoId: string) {
+    return ytdl(`https://www.youtube.com/watch?v=${videoId}`, { filter: 'audioonly' });
+  }
+
+  async createAudioResource(audioStream: Readable) {
+    return createAudioResource(audioStream, { inputType: StreamType.Arbitrary, inlineVolume: true });
+  }
+
+  async play(resource: AudioResource<null>, message: Message): Promise<void> {
+    return new Promise((resolve, reject) => {
+      this.audioPlayer.play(resource);
+
+      this.voiceConnection?.subscribe(this.audioPlayer);
 
       this.audioPlayer.on(AudioPlayerStatus.Playing, () => {
         message.reply('🎵 play!');
+        resolve();
       });
 
       this.audioPlayer.on(AudioPlayerStatus.Idle, () => {
         message.reply('🎵 stop!');
+        resolve();
       });
 
       this.audioPlayer.on('error', (e: any) => {
         console.error(e);
-
-        message.reply('에러가 발생했습니다.');
+        reject(e);
       });
-    } catch (e) {
-      console.error(e);
-
-      message.reply('에러가 발생했습니다.');
-    }
+    });
   }
 }

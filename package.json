@@ -21,6 +21,7 @@
   },
   "dependencies": {
     "@discordjs/voice": "^0.17.0",
+    "@distube/ytdl-core": "^4.14.4",
     "@nestjs/common": "^10.0.0",
     "@nestjs/config": "^3.2.3",
     "@nestjs/core": "^10.0.0",
@@ -28,6 +29,7 @@
     "discord.js": "^14.15.3",
     "ffmpeg-static": "^5.2.0",
     "googleapis": "^142.0.0",
+    "libsodium-wrappers": "^0.7.15",
     "opusscript": "^0.0.8",
     "play-dl": "^1.9.7",
     "reflect-metadata": "^0.2.0",
